@@ -1,0 +1,34 @@
+{
+    "name": "hospital-management-system",
+    "version": "1.0.0",
+    "description": "Hospital Management System designed by Tinkerers' Lab IIT Hyderabad for the Indian Airforce.",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "build": "cd frontend && npm install && npm run build",
+        "package:win": "electron-packager . hms --platform=win32 --arch=x64 --out=release-build --overwrite",
+        "package:linux": "electron-packager . hms --platform=linux --arch=x64 --out=release-build --overwrite",
+        "package:mac": "electron-packager . hms --platform=darwin --arch=x64 --out=release-build --overwrite",
+        "package:all": "electron-packager . hms --platform=win32,linux,darwin --arch=x64 --out=release-build --overwrite",
+        "postinstall": "cd frontend && npm install",
+        "package:appimage": "electron-builder --linux AppImage"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.18.2",
+        "path": "^0.12.7"
+    },
+    "devDependencies": {
+        "electron": "^29.0.0",
+        "electron-builder": "^25.1.8",
+        "electron-packager": "^17.1.0"
+    },
+    "author": "Pranjal Prajapati",
+    "build": {
+        "appId": "com.yourapp.id",
+        "linux": {
+        "target": "AppImage",
+        "category": "Utility"
+    }
+  }
+}
