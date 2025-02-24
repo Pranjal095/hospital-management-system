@@ -1,12 +1,30 @@
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:99
+ENV DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
+ENV XDG_RUNTIME_DIR=/tmp/runtime-appuser
 
+# Install dbus (needed for dbus-uuidgen) first
+RUN apt-get update && apt-get install -y dbus && rm -rf /var/lib/apt/lists/*
+
+# Create required users and directories
+RUN mkdir -p /var/lib/dbus /run/dbus /tmp/.X11-unix && \
+    id -u messagebus &>/dev/null || useradd -r -g messagebus messagebus && \
+    useradd -m appuser && \
+    chown messagebus:messagebus /run/dbus && \
+    chmod 755 /run/dbus && \
+    chmod 1777 /tmp/.X11-unix && \
+    dbus-uuidgen > /var/lib/dbus/machine-id
+
+# Install required packages
 RUN apt update && apt install -y dbus-x11 \
     xvfb \
     dbus \
     x11-utils \
     xauth \
+    libcanberra-gtk-module \
+    libcanberra-gtk3-module \
     libasound2 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -96,33 +114,47 @@ RUN apt update && apt install -y dbus-x11 \
     ca-certificates fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-    RUN useradd -m appuser
+# Copy and extract AppImage with proper permissions
+COPY --chown=appuser:appuser dist/hospital-management-system-1.0.0.AppImage /home/appuser/
+USER appuser
+RUN cd /home/appuser && \
+    chmod +x hospital-management-system-1.0.0.AppImage && \
+    ./hospital-management-system-1.0.0.AppImage --appimage-extract && \
+    mv squashfs-root app && \
+    chmod -R +x app && \
+    rm hospital-management-system-1.0.0.AppImage
 
-    WORKDIR /home/appuser
+USER root
+RUN chown -R appuser:appuser /home/appuser && \
+    chmod -R 755 /home/appuser/app
 
-    COPY dist/hospital-management-system-1.0.0.AppImage /home/appuser/hms.AppImage
-    RUN chmod +x /home/appuser/hms.AppImage && chown appuser:appuser /home/appuser/hms.AppImage
+# Create startup script (fixed)
+RUN cat > /home/appuser/start.sh <<'EOF'
+#!/bin/bash
 
-    RUN mkdir -p /run/dbus && dbus-uuidgen > /var/lib/dbus/machine-id
+# Create /run/dbus (in tmpfs mounted at runtime) with correct permissions
+mkdir -p /run/dbus
+chown messagebus:messagebus /run/dbus
+chmod 755 /run/dbus
+rm -f /run/dbus/system_bus_socket
 
-    USER appuser
-    WORKDIR /home/appuser
+# Start the D-Bus daemon
+dbus-daemon --system --fork --address=unix:path=/run/dbus/system_bus_socket
+sleep 2
 
-    RUN ./hms.AppImage --appimage-extract
+# Verify that the host X server is available
+if ! xdpyinfo -display "$DISPLAY" > /dev/null 2>&1; then
+    echo "Error: Unable to connect to the host X server at $DISPLAY"
+    exit 1
+fi
 
-    ENV DISPLAY=:99
-    ENV DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
+# Now switch to appuser to run the application
+su appuser -c "cd /home/appuser/app && exec ./hospital-management-system --enable-logging --no-sandbox --disable-gpu --disable-dev-shm-usage"
+EOF
 
-    WORKDIR /home/appuser/squashfs-root
+RUN chmod +x /home/appuser/start.sh && \
+    chown appuser:appuser /home/appuser/start.sh
 
-    USER root
-    RUN mkdir -p /run/dbus && chmod 1777 /run/dbus
-    RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
-    RUN chmod 4755 /home/appuser/squashfs-root/chrome-sandbox || true
-
-    USER appuser
-
-    CMD dbus-daemon --system --fork && \
-    Xvfb :99 -screen 0 1024x768x24 & \
-    sleep 2 && \
-    ./hospital-management-system --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --disable-features=UseChromeOSDirectVideoDecoder
+# Run the container as root so the startup script can create /run/dbus
+WORKDIR /home/appuser/app
+CMD ["/home/appuser/start.sh"]
