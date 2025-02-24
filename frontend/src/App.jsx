@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { signInWithGoogle } from "./firebaseConfig";
-import FlagImage from "./assets/flag.jpg"
+import FlagImage from "./assets/flag.jpg";
 import axios from "axios";
 import Profile from "./components/Pathology";
 import Prescription from "./components/Prescription";
-import { BrowserRouter as Router, Route, Routes, useNavigate, useLocation } from "react-router-dom";
+import { HashRouter as Router, Route, Routes, useNavigate, useLocation } from "react-router-dom";
 
 function App() {
   const [name, setName] = useState("");
