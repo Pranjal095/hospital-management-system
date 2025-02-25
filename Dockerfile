@@ -5,20 +5,18 @@ ENV DISPLAY=:99
 ENV DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 ENV XDG_RUNTIME_DIR=/tmp/runtime-appuser
 
-# Install dbus (needed for dbus-uuidgen) first
 RUN apt-get update && apt-get install -y dbus && rm -rf /var/lib/apt/lists/*
 
-# Create required users and directories
 RUN mkdir -p /var/lib/dbus /run/dbus /tmp/.X11-unix && \
-    id -u messagebus &>/dev/null || useradd -r -g messagebus messagebus && \
+    (id -u messagebus &>/dev/null || useradd -r -g messagebus messagebus) && \
     useradd -m appuser && \
     chown messagebus:messagebus /run/dbus && \
     chmod 755 /run/dbus && \
     chmod 1777 /tmp/.X11-unix && \
     dbus-uuidgen > /var/lib/dbus/machine-id
 
-# Install required packages
-RUN apt update && apt install -y dbus-x11 \
+RUN apt update && apt install -y \
+    dbus-x11 \
     xvfb \
     dbus \
     x11-utils \
@@ -111,10 +109,21 @@ RUN apt update && apt install -y dbus-x11 \
     libxrender1 \
     zlib1g \
     libzstd1 \
-    ca-certificates fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    fonts-liberation \
+    curl \
+    python3 \
+    python3.10-venv \
+    python3-pip && rm -rf /var/lib/apt/lists/*
 
-# Copy and extract AppImage with proper permissions
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --chown=appuser:appuser backend /home/appuser/app/backend
+
+RUN python3 -m venv /home/appuser/app/backend/venv
+
 COPY --chown=appuser:appuser dist/hospital-management-system-1.0.0.AppImage /home/appuser/
 USER appuser
 RUN cd /home/appuser && \
@@ -126,35 +135,41 @@ RUN cd /home/appuser && \
 
 USER root
 RUN chown -R appuser:appuser /home/appuser && \
-    chmod -R 755 /home/appuser/app
+chmod -R 755 /home/appuser/app
 
-# Create startup script (fixed)
 RUN cat > /home/appuser/start.sh <<'EOF'
 #!/bin/bash
 
-# Create /run/dbus (in tmpfs mounted at runtime) with correct permissions
 mkdir -p /run/dbus
 chown messagebus:messagebus /run/dbus
 chmod 755 /run/dbus
 rm -f /run/dbus/system_bus_socket
 
-# Start the D-Bus daemon
 dbus-daemon --system --fork --address=unix:path=/run/dbus/system_bus_socket
 sleep 2
 
-# Verify that the host X server is available
-if ! xdpyinfo -display "$DISPLAY" > /dev/null 2>&1; then
-    echo "Error: Unable to connect to the host X server at $DISPLAY"
-    exit 1
+if [ -d "/home/appuser/app/backend" ]; then
+  echo "Starting backend server..."
+  cd /home/appuser/app/backend
+  node server.js &
+  BACKEND_PID=$!
+  echo "Backend server PID: $BACKEND_PID"
+else
+  echo "Backend folder not found!"
 fi
 
-# Now switch to appuser to run the application
-su appuser -c "cd /home/appuser/app && exec ./hospital-management-system --enable-logging --no-sandbox --disable-gpu --disable-dev-shm-usage"
+sleep 3
+
+echo "Launching the Electron app..."
+su appuser -c "cd /home/appuser/app/squashfs-root && exec ./hospital-management-system --enable-logging --no-sandbox --disable-gpu --disable-dev-shm-usage"
+
+if [ ! -z "$BACKEND_PID" ]; then
+  kill $BACKEND_PID
+fi
 EOF
 
 RUN chmod +x /home/appuser/start.sh && \
     chown appuser:appuser /home/appuser/start.sh
 
-# Run the container as root so the startup script can create /run/dbus
 WORKDIR /home/appuser/app
 CMD ["/home/appuser/start.sh"]

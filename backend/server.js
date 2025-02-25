@@ -29,7 +29,7 @@ app.use("/api/pdf", pdfRoutes);
 
 const PORT = 3000;
 
-const pythonServer = exec('backend/venv/bin/python backend/server.py', (error, stdout, stderr) => {
+const pythonServer = exec('./venv/bin/python server.py', (error, stdout, stderr) => {
     if (error) console.error(`Python server error: ${error}`);
     if (stderr) console.error(`Python server stderr: ${stderr}`);
     console.log(`Python server stdout: ${stdout}`);
@@ -45,7 +45,6 @@ app.listen(PORT, () => {
     console.log(`Express server running on "http://localhost:3000`);
 });
 
-// Cleanup on exit
 process.on('exit', () => {
     pythonServer.kill();
 });
