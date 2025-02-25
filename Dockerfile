@@ -5,7 +5,17 @@ ENV DISPLAY=:99
 ENV DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 ENV XDG_RUNTIME_DIR=/tmp/runtime-appuser
 
-RUN apt-get update && apt-get install -y dbus && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y dbus \
+  wget \
+  gnupg \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | \
+    gpg --dearmor | tee /usr/share/keyrings/mongodb-org-6.0.gpg > /dev/null && \
+    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-org-6.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" | \
+    tee /etc/apt/sources.list.d/mongodb-org-6.0.list && \
+    apt-get update && apt-get install -y mongodb-org && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /var/lib/dbus /run/dbus /tmp/.X11-unix && \
     (id -u messagebus &>/dev/null || useradd -r -g messagebus messagebus) && \
@@ -146,6 +156,12 @@ chmod 755 /run/dbus
 rm -f /run/dbus/system_bus_socket
 
 dbus-daemon --system --fork --address=unix:path=/run/dbus/system_bus_socket
+sleep 2
+
+mkdir -p /data/db && chown -R appuser:appuser /data/db
+
+echo "Starting MongoDB..."
+mongod --fork --logpath /var/log/mongodb.log --dbpath /data/db || { echo "MongoDB failed to start"; exit 1; }
 sleep 2
 
 if [ -d "/home/appuser/app/backend" ]; then
