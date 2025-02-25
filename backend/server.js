@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require('cors');
 const { exec } = require('child_process');
+const path = require("path");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const patientRoutes = require("./routes/patientRoutes");
@@ -11,12 +12,12 @@ const documentRoutes = require("./routes/documentRoutes");
 const audioRoutes = require("./routes/audioRoutes");
 const pdfRoutes = require("./routes/pdfRoutes");
 
-dotenv.config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
 connectDB();
 
 const app = express();
 // for testing purposes
-// app.use(cors());
+app.use(cors());
 app.use(express.json());
 app.use("/api/patients", patientRoutes);
 app.use("/api/lab-reports", labReportRoutes);
@@ -40,8 +41,8 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
-app.listen(PORT, '127.0.0.1', () => {
-    console.log(`Express server running on http://127.0.0.1:${PORT}`);
+app.listen(PORT, () => {
+    console.log(`Express server running on "http://localhost:3000`);
 });
 
 // Cleanup on exit
